@@ -1,0 +1,1 @@
+[2,"Error in registerDoMC(cores = 8) : could not find function \"registerDoMC\"\nCalls: sourceWithProgress -> eval -> eval\nExecution halted\n"]

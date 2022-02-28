@@ -1,0 +1,5 @@
+"0","l %>%"
+"0","  filter(stringr::str_starts(term, ""category"")) %>%"
+"0","  filter(stringr::str_length(term) < 15) %>%"
+"0","  arrange(desc(estimate)) %>%"
+"0","  head(3)"

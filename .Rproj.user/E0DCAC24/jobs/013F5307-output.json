@@ -1,0 +1,2 @@
+[2,"Loading required package: foreach\n"]
+[2,"Loading required package: iterators\nLoading required package: parallel\nError in rf_tune_workflow %>% tune_grid(resamples, grid = rf_grid) : \n  could not find function \"%>%\"\nCalls: sourceWithProgress -> eval -> eval\nIn addition: Warning message:\npackage ‘doMC’ was built under R version 4.1.2 \nExecution halted\n"]

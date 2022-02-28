@@ -1,0 +1,8 @@
+"0","ggplot(data = youtube_eda, "
+"0","         mapping = aes(x = time_release_trending)) +"
+"0","    geom_histogram(bins = 100, "
+"0","                   fill = ""#cc0000"") +"
+"0","    theme_bw() +"
+"0","    labs(title = ""Distribution of the number of days from \nrelease to becoming trending"", "
+"0","         x = ""number of days"") +"
+"0","  theme(plot.title = element_text(size = 10))"

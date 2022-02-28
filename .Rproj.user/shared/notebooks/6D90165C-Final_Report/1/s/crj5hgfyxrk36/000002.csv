@@ -1,0 +1,2 @@
+"0","#r-squared"
+"0","rsq(truth_against_pred, truth = target, estimate = .pred)"

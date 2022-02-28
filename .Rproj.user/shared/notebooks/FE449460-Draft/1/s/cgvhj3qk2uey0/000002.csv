@@ -1,0 +1,5 @@
+"0","#EDA split"
+"0","youtube_data_split <- youtube_data %>% "
+"0","  initial_split(prop = 0.6)"
+"0","youtube_pred <- youtube_data_split %>% training()"
+"0","youtube_eda <- youtube_data_split %>% testing()"

@@ -1,0 +1,71 @@
+"0","knitr::opts_chunk$set("
+"0","  warning = FALSE, message = FALSE, echo = FALSE"
+"0",")"
+"0","library(readr)"
+"0","library(ggfortify)"
+"2","Warning:"
+"2"," package ‘ggfortify’ was built under R version 4.1.2
+"
+"2","Loading required package: ggplot2
+"
+"0","library(arrow)"
+"2","
+Attaching package: ‘arrow’
+
+"
+"2","The following object is masked from ‘package:utils’:
+
+    timestamp
+
+"
+"0","library(skimr)"
+"0","library(tidymodels)"
+"2","Registered S3 method overwritten by 'tune':
+  method                   from   
+  required_pkgs.model_spec parsnip
+"
+"2","[30m── [1mAttaching packages[22m ────────────────────────────────────────────────────────────────────────────────────────────── tidymodels 0.1.4 ──[39m
+"
+"2","[30m[32m✓[30m [34mbroom       [30m 0.7.10     [32m✓[30m [34mrsample     [30m 0.1.1 
+[32m✓[30m [34mdials       [30m 0.0.10     [32m✓[30m [34mtibble      [30m 3.1.6 
+[32m✓[30m [34mdplyr       [30m 1.0.7      [32m✓[30m [34mtidyr       [30m 1.1.4 
+[32m✓[30m [34minfer       [30m 1.0.0      [32m✓[30m [34mtune        [30m 0.1.6 
+[32m✓[30m [34mmodeldata   [30m 0.1.1      [32m✓[30m [34mworkflows   [30m 0.2.4 
+[32m✓[30m [34mparsnip     [30m 0.1.7      [32m✓[30m [34mworkflowsets[30m 0.1.0 
+[32m✓[30m [34mpurrr       [30m 0.3.4      [32m✓[30m [34myardstick   [30m 0.0.9 
+[32m✓[30m [34mrecipes     [30m 0.1.17     [39m
+"
+"2","[30m── [1mConflicts[22m ───────────────────────────────────────────────────────────────────────────────────────────────── tidymodels_conflicts() ──
+[31mx[30m [34mpurrr[30m::[32mdiscard()[30m  masks [34mscales[30m::discard()
+[31mx[30m [34mdplyr[30m::[32mfilter()[30m   masks [34mstats[30m::filter()
+[31mx[30m [34mdplyr[30m::[32mlag()[30m      masks [34mstats[30m::lag()
+[31mx[30m [34myardstick[30m::[32mspec()[30m masks [34mreadr[30m::spec()
+[31mx[30m [34mrecipes[30m::[32mstep()[30m   masks [34mstats[30m::step()
+[34m•[30m Use suppressPackageStartupMessages() to eliminate package startup messages[39m
+"
+"0","library(lubridate)"
+"2","
+Attaching package: ‘lubridate’
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    date, intersect, setdiff, union
+
+"
+"0","library(patchwork)"
+"0","library(stringr)"
+"2","
+Attaching package: ‘stringr’
+
+"
+"2","The following object is masked from ‘package:recipes’:
+
+    fixed
+
+"
+"0","load(""data/all_models.rda"")"
+"0","load(""data/rf_customized_models.rda"")"
+"0","load(""data/fit_lm_interaction.rda"")"
+"0","set.seed(123)"
+"0",""

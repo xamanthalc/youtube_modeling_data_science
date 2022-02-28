@@ -1,0 +1,35 @@
+Code book:  Data sets made youtube_data
+
+General:
+	•	The data set has 90,099 observations and 24 variables. 
+	•	9 variables are characters, 2 are dates, 3 are logicals, 9 are numericals, and 1 is a POSIXct variable. 
+
+The variables are:
+	•	video_id: primary key of the video.
+	•	title: title of the video.
+	•	channelId : the id of the channel that released the video. 
+	•	channelTitle: the name  of the channel that released the video.
+	•	tags: tags associated with the video.
+	•	thumbnail_link: the link to the main image that represents the video. 
+	•	description: description of the video. 
+	•	id: another key to represent the video observation. 
+	•	day_week_released: the day of the week when the video was released. 
+	•	trending_date: the date when the video achieve its peak of likes per day.  
+	•	released_date: the date when the video was released. 
+	•	comments_disabled: whether the video has disabled the comments or not.
+	•	ratings_disabled: whether the video has disabled the ratings or not. 
+	•	has_thumbnail: whether the video has thumbnail or not.
+	•	categoryId: the category id of the video. To check what each number stands for, check: https://techpostplus.com/youtube-video-categories-list-faqs-and-solutions/ 
+	•	view_count: the total number of views of the video. 
+	•	likes: the total number of likes of the video.  
+	•	dislikes: the total number of dislikes of the video.  
+	•	comment_count: the total number of comments of the video.  
+	•	duration_seconds: the length of the video in seconds.  
+	•	target: the number of likes to view count ratio. 
+	•	hour_released: the time when the video was released 
+	•	time_release_trending: the time when the video achieved the peak of likes per day. 
+	•	publishedAt: the date and time when the video was released. 
+
+
+
+

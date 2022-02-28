@@ -1,0 +1,831 @@
+---
+title: "Predicting the Number of Likes to Views Ratio of a YouTube Video"
+subtitle: "Long Report"
+author: "Xamantha Laos Cueva"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    highlight: "tango"
+---
+
+<!-- Set global options for R code chunks -->
+
+```{r global-settings, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, message = FALSE, echo = FALSE, comment = NA
+)
+library(readr)
+library(ggfortify)
+library(arrow)
+library(skimr)
+library(tidymodels)
+library(lubridate)
+library(patchwork)
+library(janitor)
+library(stringr)
+load("data/all_models.rda")
+load("data/rf_customized_models.rda")
+load("data/fit_lm_interaction.rda")
+load("data/final_fit.rda")
+load("data/lm_tuned.rda")
+load("data/lasso_tuned.rda")
+load("data/ridge_tuned.rda")
+load("data/final_lm_tune_fit.rda")
+load("data/final_lasso_tune_fit.rda")
+load("data/final_ridge_tune_fit.rda")
+load("data/final_lm_splines.rda")
+set.seed(123)
+
+```
+
+## Abstract
+
+This study developed several models to predict the target (likes to views ratio) of a YouTube video using a a data set from Kaggle. Aside from prediction, the study's purpose was to provide an insight into what factors might affect target ratio the most and what categories of videos tend to perform better/worse. The study concluded that-out of the different models developed-the random forest model with 1000 trees performed the best with an r-squared value of \~0.67 and a rmse of 0.024. It also identified enabling/disabling comments as an important variable that is worth of further study. Finally, it showed that, when isolating the category factor, music and comedy videos tend to perform the best while sports and news/politics videos tend to perform the worst.
+
+## Data Overview
+
+**Source:** The data was obtained from Kaggle from a competition called "[Predict Youtube Video Likes](https://www.kaggle.com/c/kaggle-pog-series-s01e01/data)." The data has been compiled by Kaggle, which provides a strong trust on its validity, and it is a compilation of metrics of over 90,000 YouTube Videos.
+
+**General Facts:** The data set has 92,275 rows and 20 variables, as shown below.
+
+```{r, comment = NA}
+#set seed for reproducibility
+set.seed(123)
+
+#data
+youtube_data <- read_parquet("data/youtube_metrics.parquet")
+#number of rows and columns
+nrow(youtube_data)
+ncol(youtube_data)
+
+```
+
+Out of the 20 variables:
+
+-   8 were character variables.
+
+-   1 was a date variable.
+
+-   3 were logical variables.
+
+-   7 were numeric variables.
+
+-   1 was a POSIXc variable.
+
+Additionally, after skimming the data set, it was found that 2 variables have missing observations: `description` (1476 missing) and `duration_seconds` (2176 missing). Given that `duration_seconds` is a numerical variable that is likely to be important for modeling and its missing observations represent a very small part of the data (2.39%), such observations with missing `duration_seconds` were deleted. Overall, the data was in tidy format. The result is shown below:
+
+```{r, comment = NA}
+#getting rid of missing observations in duration
+youtube_data <- youtube_data %>%
+  filter(!is.na(duration_seconds))
+
+#skimming data 
+skim_without_charts(youtube_data)
+```
+
+**Considerations - Derived Variables:** From the skim above, it was noticed that the variable `publishedAt` is a POSIXc variable that outlined the date and time when a video was released. New variables called `hour_released`, `released_date`, `time_release_trending`, and `day_week_released` were created from `publishedAt.` The variable `hour_released` stores the hour at which a Youtube video was posted and it is a numeric variable. The variable `released_date` stores the date when the video was released and it is a date variable. The variable `time_release_trending` stores the number of days between the release of a video and the date when it becomes trending. The variable `day_week_released` stores the day of the week when the video was released and it is a character variable. The justification was that isolating date and hour as individual variables could bring up interesting insights during the EDA and model-building process later on.
+
+```{r}
+#creating additional variables 
+youtube_data <- youtube_data %>%
+  mutate(released_date = as_date(publishedAt), 
+         hour_released = hour(publishedAt), 
+         day_week_released = wday(publishedAt), 
+         time_release_trending = as.numeric(trending_date - released_date)) 
+
+#converting day of the week to strings 
+youtube_data <- youtube_data %>%
+  mutate(day_week_released = if_else(day_week_released == 1, 
+                                     "Sunday", 
+                                     if_else(day_week_released == 2, 
+                                             "Monday", 
+                                             if_else(day_week_released == 3, 
+                                                     "Tuesday", 
+                                                     if_else(day_week_released == 4, 
+                                                             "Wednesday", 
+                                                             if_else(day_week_released == 5, 
+                                                                     "Thursday", 
+                                                                     if_else(day_week_released == 6, 
+                                                                             "Friday", 
+                                                                             if_else(day_week_released == 7, 
+                                                                                     "Saturday",
+                                                                                     "None"))))))))
+
+```
+
+Thus, after the modifications, the data set had 90,099 rows and **24 variables**, out of which:
+
+-   9 were character variables.
+
+-   2 were a date variable.
+
+-   3 were logical variables.
+
+-   9 were numeric variables.
+
+-   1 was a POSIXct variable.
+
+**Codebook:** A codebook for the data set is included in the project under the name "codebook_youtube_data_set" and can also be found in the following link: <https://drive.google.com/file/d/1fePKrgvBqZPlPeJk1C_k9rQt5ggomMHV/view?usp=sharing>.
+
+## Leading Research Questions
+
+The main research question for this study was: [*Can the target (ratio of number of likes and views) be successfully predicted based in video's metrics (duration, comments, etc.)?*]{.ul}
+
+Other questions:
+
+-   What is the main factor affecting a video's target?
+
+-   What category of video should someone produce to optimize their target?
+
+**Reasoning:** Target ratio was chosen as the outcome variable over number of likes with aims of standardization and adding additional complexity to the model. This is because it is logical that an outcome variable such as "number of likes" is highly affected by the number of views (e.g. a video with 1 million of views has higher chances of more likes than a video with 100 thousand views). Thus, a better way to attempt to measure viewers' responsiveness to a video is the target ratio since it adjusts the number of likes to the total views. Moreover, having target as the outcome variable makes the predictors less obvious when modeling, thereby adding complexity to the process.
+
+## Exploratory Data Analysis
+
+In the section below, an Exploratory Data Analysis was conducted to explore the distributions and relationships of the variables in the data set to use the insights as starting point for the model-building process. Due to the large amount of data, this study could afford to use 40% of the entries for EDA (36,040 observations) and separate 60% of the data for the predictive-modeling phase to avoid introducing bias (54,059) observations.
+
+```{r, comment=NA}
+#EDA split
+youtube_data_split <- youtube_data %>% 
+  initial_split(prop = 0.6)
+youtube_pred <- youtube_data_split %>% training()
+youtube_eda <- youtube_data_split %>% testing()
+```
+
+### Univariate
+
+#### Numeric Variables
+
+The following plots show the distribution of the numeric variable.
+
+```{r, fig.width= 20, fig.height= 12}
+#creating function to analyze distribution 
+univar_numeric_plots <- function(col) {
+  ggplot(data = youtube_eda, 
+         mapping = aes(x = {{col}})) +
+    geom_histogram(bins = 100, 
+                   fill = "#cc0000") +
+    theme_bw() +
+    labs(title = paste("Distribution of", deparse(substitute(col)), sep = " "))
+}
+
+#making plots 
+uni_a <- univar_numeric_plots(likes)
+uni_b <- univar_numeric_plots(categoryId)
+uni_c <- univar_numeric_plots(view_count)
+uni_d <- univar_numeric_plots(dislikes)
+uni_e <- univar_numeric_plots(comment_count)
+uni_f <- univar_numeric_plots(duration_seconds)
+uni_g <- univar_numeric_plots(target)
+uni_h <- univar_numeric_plots(hour_released)
+
+#joining with patchwork
+(uni_a + uni_b + uni_c + uni_d) / (uni_e + uni_f + uni_g + uni_h)
+```
+
+As shown above, the variables `likes`, `view_count`, `comment_count`, `dislikes`, `duration_seconds` had strong right-skewed shapes. This is due to the fact that there were outliers at levels much bigger than those where most of the observations are. This behavior could later cause trouble during modeling, so such variables were transformed with logarithmically to base 10 to reduce skewness. The distributions after the transformation are shown below:
+
+```{r, fig.width= 20, fig.height= 12}
+#transforming variables 
+youtube_eda <- youtube_eda %>%
+  mutate(likes = log(likes, base = 10), 
+         view_count = log(view_count, base = 10),
+         comment_count = log(comment_count, base = 10),
+         dislikes = log(dislikes, base = 10),
+         duration_seconds = log(duration_seconds, base = 10))
+
+#making plots 
+uni_a_1 <- univar_numeric_plots(likes)
+uni_b_1 <- univar_numeric_plots(categoryId)
+uni_c_1 <- univar_numeric_plots(view_count)
+uni_d_1 <- univar_numeric_plots(dislikes)
+uni_e_1 <- univar_numeric_plots(comment_count)
+uni_f_1 <- univar_numeric_plots(duration_seconds)
+uni_g_1 <- univar_numeric_plots(target)
+uni_h_1 <- univar_numeric_plots(hour_released)
+
+#joining with patchwork
+(uni_a_1 + uni_b_1 + uni_c_1 + uni_d_1) / (uni_e_1 + uni_f_1 + uni_g_1 + uni_h_1)
+
+```
+
+Additionally, the distribution of the number of days from video release to becoming trending is shown below. Despite its right-skewness, the variable was not transformed due to its small range (0-37).
+
+```{r, fig.height= 3, fig.width=4.5}
+ggplot(data = youtube_eda, 
+         mapping = aes(x = time_release_trending)) +
+    geom_histogram(bins = 100, 
+                   fill = "#cc0000") +
+    theme_bw() +
+    labs(title = "Distribution of the number of days from \nrelease to becoming trending", 
+         x = "number of days") +
+  theme(plot.title = element_text(size = 10))
+```
+
+Some takeaways:
+
+-   The most popular categories of YouTube videos in the data set are categoryId = 24 (entertainment), followed by categoryId = 10 (music).
+
+-   The most popular hour to release a YouTube video in the data set is 16:00, followed by 17:00.
+
+-   The media number of: views is \~1 million, likes is \~50 thousand, dislikes is 852, comments is \~4 thousand, duration is \~450 seconds (7,5 minutes), and target (likes/views) is 0.05.
+
+-   Most videos become trending within 10 days of release.
+
+#### Non-numeric Variables
+
+```{r,fig.width= 20, fig.height= 12}
+#mode function
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+#highlight highest bar plot-function
+highlight_max_bar <- function(col) {
+  col1 <- as_vector(youtube_eda %>% select({{col}}))
+  h <- Mode(col1)
+  if(h == 18565) {
+    h <- as_date(h)
+    meanwhile <- youtube_eda %>%
+    mutate(max = if_else({{col}} == h, 
+                         TRUE, 
+                         FALSE)) %>%
+      ggplot(aes(x = {{col}}, fill = max)) +
+      scale_fill_manual(values = c("#6e6e6e", "#cc0000")) +
+      geom_bar(show.legend = FALSE) +
+      theme_bw() +
+      labs(x = deparse(substitute(col)))
+    meanwhile
+    
+  } else {
+    h <- h
+    meanwhile <- youtube_eda %>%
+    mutate(max = if_else({{col1}} == h, 
+                         TRUE, 
+                         FALSE)) %>%
+    ggplot(aes(x = {{col1}}, fill = max)) +
+    scale_fill_manual(values = c("#6e6e6e", "#cc0000")) +
+    geom_bar(show.legend = FALSE) +
+    theme_bw() +
+    labs(x = deparse(substitute(col)))
+  meanwhile
+  }
+ 
+}
+
+nonuni_a <- highlight_max_bar(day_week_released)
+nonuni_b <- highlight_max_bar(comments_disabled)
+nonuni_c <- highlight_max_bar(ratings_disabled)
+nonuni_d <- highlight_max_bar(has_thumbnail)
+nonuni_e <- highlight_max_bar(released_date)
+
+#puting them together with patchwork
+nonuni_e / (nonuni_a + nonuni_b + nonuni_c + nonuni_d)
+
+```
+
+Some takeaways:
+
+-   The most popular date when Youtube videos were released was October 30, 2020.
+
+-   Friday is the most popular day to release videos (although they are fairly released across all days of the week).
+
+-   Most videos did not disable comments/ratings/thumbnails.
+
+### Bivariate
+
+Given that the outcome variable of the predictive model was `target`, the bivariate analysis was focused on finding insights of the behavior of target relative to other variables.
+
+Note: The variable `categoryId` was tested as a qualitative variable for bivariate analysis.
+
+#### Numeric Variables:
+
+```{r, comment=NA, fig.width= 20, fig.height= 12}
+#function to make bivariate numeric plots
+biv_numeric <- function(col) {
+  ggplot(data = youtube_eda, 
+         mapping = aes(x = {{col}}, 
+                       y = target)) +
+    geom_jitter(alpha = 0.1, color = "#6e6e6e") +
+    geom_smooth(se = FALSE, color = "#cc0000") +
+    theme_bw() +
+    labs(title = paste("Scatterplot of target vs", deparse(substitute(col)), sep = " "))
+}
+
+#applying function to make plots 
+biv_a <- biv_numeric(dislikes)
+biv_b <- biv_numeric(comment_count)
+biv_c <- biv_numeric(duration_seconds)
+biv_d <- biv_numeric(hour_released)
+biv_e <- biv_numeric(time_release_trending)
+
+#together with patchwork
+biv_e / (biv_a + biv_b) / (biv_c + biv_d)
+```
+
+Some takeaways:
+
+-   Overall, the sooner a video becomes trending from release date, the higher its target ratio.
+
+-   Comment count and target ratio have a positive relationship.
+
+-   Both likes and view_count are not in the plots because target ratio = likes/view_count:
+
+    -   All else equal, the higher the number of like, the higher the target ratio.
+
+    -   All else equal, the higher the number of view_count, the lower the target ratio.
+
+#### Non-numeric Variables:
+
+```{r, comment=NA, fig.width= 20, fig.height= 12}
+#function to make ivariate non-numeric plots 
+biv_non <- function(col) {
+  ggplot(data = youtube_eda, 
+         mapping = aes(x = {{col}}, 
+                       y = target)) +
+    geom_boxplot(show.legend = FALSE, 
+                 fill = "#6e6e6e", 
+                 color = "#cc0000", 
+                 alpha = 0.5) +
+    theme_bw() 
+}
+
+biv_n_a <- youtube_eda %>%
+mutate(day_week_released = ifelse(day_week_released == "Sunday", 
+                                     7, 
+                                     ifelse(day_week_released == "Monday", 
+                                             1, 
+                                             ifelse(day_week_released == "Tuesday", 
+                                                     2, 
+                                                     ifelse(day_week_released == "Wednesday", 
+                                                             3, 
+                                                             ifelse(day_week_released == "Thursday", 
+                                                                4, 
+                                                                     ifelse(day_week_released == "Friday", 
+                                                                             5, 
+                                                                             ifelse(day_week_released == "Saturday", 
+                                                                                     6,
+                                                                                     "None")))))))) %>%
+  group_by(day_week_released) %>%
+  summarise(median_target=median(target)) %>%
+  ungroup() %>%
+  ggplot(aes(x = as.numeric(day_week_released), 
+             y = median_target)) +
+  geom_point(color = "#cc0000") +
+  geom_line(color = "#cc0000") +
+  scale_x_continuous(breaks = seq(1,7,1)) +
+  labs(x = "Day of the Week Released (1 = Monday, 7 = Sunday)") +
+  theme_bw()
+
+biv_n_b <- biv_non(comments_disabled)
+biv_n_c <- biv_non(has_thumbnail)
+biv_n_d <- biv_non(ratings_disabled)
+
+
+biv_n_e <- youtube_eda %>%
+  mutate(categoryId = factor(categoryId)) %>%
+  ggplot(mapping = aes(x = categoryId, 
+                       y = target, 
+                       fill = categoryId)) +
+    geom_boxplot(show.legend = FALSE, 
+                 fill = "#6e6e6e", 
+                 color = "#cc0000", 
+                 alpha = 0.5) +
+    theme_bw()
+
+biv_n_e / biv_n_a / (biv_n_d + biv_n_c + biv_n_b)
+```
+
+Some takeaways:
+
+-   Videos that allow ratings and comments tend to have a higher target.
+
+-   The categories with the higher median target were 23: comedy and 10: music.
+
+-   Video released on Sunday performed the worse according to target, and videos released on Friday performed the best.
+
+## Modeling
+
+### Data Set Manipulation
+
+From the EDA section, it was possible to determine that variables such as categoryId, comments_disabled, ratings_disabled, comment_count, time_release_trending, day_week_released, and duration_seconds seemed to be relevant when predicting the target of a video. To continue with the modeling phase, some variables were left-out due to lack of enough importance and with the purpose of having a more focused data set. Those variables were:
+
+-   title: too specific to each entry and difficult to make into a metric. For further research, it could be interesting to investigate whether the length of a title, or its sentiment may impact target.
+
+-   publishedAt: Irrelevant given that it is redundant with the columns `released_date` and `hour_released`.
+
+-   channelId and channelTitle: too specific to each entry and difficult to make into a metric. For further research, it could be interesting to collect the number of subscriptions and use that as a metric for modeling target.
+
+-   tags: too specific to each entry and difficult to make into a metric. However, with NPL (Natural Processing Language), a study could dismantle whether the presence/absence of some tags are likely to impact target.
+
+-   thumbnail_link: not relevant.
+
+-   description: too specific to each entry and difficult to make into a metric. For further research, it could be interesting to investigate whether the sentiment of the description may impact target.
+
+-   id: not relevant given that video_id was already being used as primary key.
+
+-   released_date and trending date: to guarantee not dealing with time series.
+
+Thus, the data set for modeling ended up with 14 variables and 54,059 observations. Finally, the variables `day_week_released`, `has_thumbnail`, `ratings_disabled`, `comments_disabled`, and `categoryId` were turned into factors.
+
+After the above modifications, the first ten observations were:
+
+```{r, comment = NA, eval=TRUE}
+#subsetting
+youtube_modeling <- youtube_pred %>%
+  select(-c(title, publishedAt, 
+            channelId, tags, 
+            thumbnail_link, description, 
+            id, channelTitle, 
+            released_date, trending_date)) %>%
+  mutate(has_thumbnail = factor(has_thumbnail), 
+         ratings_disabled = factor(ratings_disabled), 
+         comments_disabled = factor(comments_disabled), 
+         categoryId = factor(categoryId), 
+         day_week_released = factor(day_week_released))
+
+#showing first results
+head(youtube_modeling, 10)
+```
+
+### Allocation of Data for Modeling
+
+The training data set used 80% of the data for predictive modeling (43,247 observations), and the 20% left was isolated for the testing phase (10,812 observations). Additionally, repeated cross-validation with 5 folds and 3 repeats was exercise on the training data set for later operations. The resamples are show below:
+
+```{r, eval=TRUE, comment=NA}
+set.seed(123)
+
+#split training-test
+youtube_split <- youtube_modeling %>% 
+initial_split(prop = 0.8, strata = target, breaks = 4)
+youtube_training <- youtube_split %>% training()
+youtube_test <- youtube_split %>% testing()
+
+#resamples
+resamples <- vfold_cv(youtube_training, v = 5, repeats = 3, strata = target)
+resamples
+```
+
+### Simple Model Selection
+
+4 main models were used to fit the resamples and assess which performed the best: Linear models, lasso models, ridge models, and random forest models. For the first three type of models, each one of them had two versions: without and with pairwise interactions. In the case of random forest, two versions were also created: using the default values, and customizing the number of trees to 1000.
+
+The plots below show how the models ranked in terms of r-squared and Root Mean Squared Error (rmse). The random forests performed better across both metrics:
+
+```{r}
+#plotting both metrics 
+autoplot(all_models) +
+  scale_color_manual(values = c("black", "#cc0000")) +
+  theme_bw()
+```
+
+The tables below show that the random forest with customized values had a small edge over the random forest with default values:
+
+**R-squared:**
+
+```{r, comment=NA}
+collect_metrics(all_models) %>% filter(.metric == "rsq")
+
+```
+
+**Root Mean Squared Error:**
+
+```{r, comment=NA}
+collect_metrics(all_models) %>% filter(.metric == "rmse")
+
+```
+
+As show above, the random forest with customized values performed better and had an r-squared = 0.662, which is considered to be moderate. Additionally, it also had the smallest rmse = 0.0246 which meant that it was the model that had the highest proportion of accurate predictions and the smallest error. Even though it was the model the performed the best, it was necessary to put the results in perspective:
+
+```{r}
+#collecting_predictions
+assess_res <- collect_predictions(rf_customized_models)
+#making plot 
+assess_res %>% 
+  ggplot(aes(x = target, y = .pred)) + 
+  geom_point(alpha = .15) +
+  geom_abline(color = "red") + 
+  coord_obs_pred() + 
+  theme_bw() +
+  labs(y = "predictions in the training set - resamples", 
+       x = "actual values in the training set")
+
+```
+
+As show by the plot, at targets over 0.15, the models tends to under-predict. For example, some of the observations have target values of 0.4 that are predicted at slightly over 0.1.
+
+### Tuned Model Selection
+
+Aside from the 8 models created above, another 32 models resulting from tuning the linear models were developed. The linear model without penalty was tuned according to the number of splines, while the lasso and ridge model were tuned according to penalty. The results are shown below:
+
+#### Linear Model
+
+The iterations used for tuning on the number of splines were:
+
+```{r, comment=NA}
+#making recipe that will be used with lm model 
+recipe_for_with_inter_sp <- 
+  #outcome: target, predictor: all other variable
+  recipe(target ~.,data = youtube_training) %>%
+  #get rid of variables below
+  step_rm(video_id, view_count, likes) %>%
+  #turning the following variables into log based 10
+  step_log(comment_count, base = 10, signed = TRUE) %>% 
+  step_log(duration_seconds, base = 10, signed = TRUE) %>%
+  step_log(dislikes, base = 10, signed = TRUE) %>%
+  #turning nominal predictors into dummy variables
+  step_dummy(all_nominal_predictors()) %>%
+  #normalize numeric predictors: center and scale 
+  step_normalize(all_numeric_predictors()) %>%
+  #add interactions 
+  step_interact(~all_predictors()*all_predictors()) %>%
+  step_ns(comment_count, deg_free = tune("comment_count df")) %>%
+  step_ns(hour_released, deg_free = tune("hour_release df"))
+
+#model
+lm_model_tune <- linear_reg() %>%
+  set_engine("lm")
+
+#workflows
+lm_tune_workflow <- workflow() %>% 
+  add_model(lm_model_tune) %>%
+  add_recipe(recipe_for_with_inter_sp)
+
+#parameters
+lm_params <- parameters(lm_tune_workflow)#second
+
+#grid
+lm_grid <- grid_regular(lm_params, levels = 4)
+lm_grid <- clean_names(lm_grid)
+lm_grid
+
+```
+
+The plot below shows that the `rmse` and the `r-squared` performed better when both the number of degrees of freedom of the `hour_released` and `comment_count` is higher.
+
+```{r}
+autoplot(lm_tuned) +
+  theme_bw() +
+  labs(x = "degrees of freedom of comment count", 
+       color = "degrees of freedom of \nhour released")
+
+```
+
+<br> This is further shown with the output of the `select_best` function:
+
+```{r}
+select_best(lm_tuned, metric = "rmse")
+```
+
+Thus, the final model was tuned using 15 degrees of freedom for both categories, and the metrics across folds are shown below:
+
+```{r, comment=NA}
+collect_metrics(final_lm_tune_fit)
+```
+
+#### Lasso Model
+
+The iterations used for tuning on the penalty were:
+
+```{r}
+#model 
+lasso_model_tune <- 
+  #mixture 1 to indicate that it is lasso
+  linear_reg(penalty = tune(), 
+             mixture = 1) %>%
+  set_engine("glmnet")
+
+#parameters
+lasso_params <- parameters(lasso_model_tune) #using default
+
+#grid
+lasso_grid <- grid_regular(lasso_params, levels = 8)
+lasso_grid
+```
+
+The plot below shows that the `rmse` and the `r-squared` performed better at the same point in both cases.
+
+```{r}
+#autoplot
+autoplot(lasso_tuned) +
+  theme_bw() +
+  labs(x = "penalty (amount of regularization)")
+```
+
+<br> The `select_best` function shows the value of such point:
+
+```{r}
+select_best(lasso_tuned, metric = "rmse")
+```
+
+Thus, the final model was tuned using 0.0000000001 as penalty, and the metrics across folds are shown below:
+
+```{r}
+collect_metrics(final_lasso_tune_fit)
+```
+
+#### Ridge Model
+
+The iterations used for tuning on the penalty were:
+
+```{r}
+#model
+ridge_model_tune <- 
+  #mixture 0 to indicate that it is ridge
+  linear_reg(penalty = tune(), 
+             mixture = 0) %>%
+  set_engine("glmnet")
+
+#parameters
+ridge_params <- parameters(ridge_model_tune) #using default
+
+#grid
+ridge_grid <- grid_regular(ridge_params, levels = 8)
+ridge_grid
+
+```
+
+The plot below shows that the `rmse` and the `r-squared` performed better at the same point in both cases.
+
+```{r}
+#autoplot
+autoplot(ridge_tuned) +
+  theme_bw() +
+  labs(x = "penalty (amount of regularization)")
+```
+
+<br> The `select_best` function shows the value of such point:
+
+```{r}
+select_best(ridge_tuned, metric = "rmse")
+```
+
+Thus, the final model was tuned using 0.0000000001 as penalty, and the metrics across folds are shown below:
+
+```{r}
+collect_metrics(final_ridge_tune_fit)
+```
+
+#### Best Tuned Model
+
+The table below summarizes the results of the tuned models:
+
+```{r}
+#making tibble with values
+summary_tuned <- data.frame("linear_splines" = c(0.507, 0.0283), 
+                            "lasso" = c(0.444, 0.0301), 
+                            "ridge" = c(0.440, 0.0302))
+
+#naming rows
+row.names(summary_tuned) <- c("mean rsqr", "mean rmse")
+summary_tuned
+
+```
+
+The linear model with tuned splines at 15 degrees of freedom outperforms the tuned lasso and ridge models with a **mean r-squared across folds of 0.5 and a mean rmse of 0.0283.** Additionally, the model is also better than the linear model developed without tuning in the previous section. Yet, the **random forest customized** remains as **the best model (mean r-squared = 0.662, mean rmse = 0.0246)**.
+
+**Note:** This section did not tune random forest models due to the fact that in the non-tuned section, it was shown that further increment of the number of trees or minimum nodes did not have a sufficiently large impact on the model. Additionally, all the tuned models were created with a recipe that includes interaction since the "Simple Model Selection" section showed that including interactions improved all models.
+
+### Model Application to the Testing Set
+
+Having chosen the random forest with customized values as the best model, it was applied on the testing set. The table and plot shown below show a snapshot of the actual values vs the predictions:
+
+```{r, comment=NA}
+#code previously needed
+#randomforestcustomized
+rand_model_customized <- 
+  rand_forest(mode = "regression", trees = 1000) %>%
+  set_engine("ranger")
+
+#no interaction
+recipe_for_without_inter <- 
+  recipe(target ~.,data = youtube_training) %>%
+  step_rm(video_id, view_count, likes) %>%
+  step_log(comment_count, base = 10, signed = TRUE) %>% 
+  step_log(duration_seconds, base = 10, signed = TRUE) %>%
+  step_log(dislikes, base = 10, signed = TRUE) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+#rand cusomized to fit on
+rf_workflow_cust <- 
+  workflow() %>% 
+  add_recipe(recipe_for_without_inter) %>% 
+  add_model(rand_model_customized)
+```
+
+```{r, eval=FALSE}
+#final fit 
+final_fit <- fit(rf_workflow_cust, youtube_training)
+```
+
+```{r, comment=NA}
+#actual vs predicted values
+truth_against_pred <- youtube_test %>%
+  select(target) %>%
+  bind_cols(predict(final_fit, youtube_test))
+
+#table
+truth_against_pred
+
+#plot 
+truth_against_pred %>%
+  ggplot(aes(x = target, 
+             y = .pred)) +
+  geom_point(alpha = .15) +
+  geom_abline(color = "red") + 
+  coord_obs_pred() +
+  theme_bw() +
+  labs(y = "predictions in the test set", 
+       x = "actual values in the test set")
+
+```
+
+The plot in the testing set very closely resembled the trend shown by the resamples. The metrics below confirmed that it was, indeed, the case:
+
+```{r, comment=NA}
+#r-squared
+rsq(truth_against_pred, truth = target, estimate = .pred)
+
+#rmse
+rmse(truth_against_pred, truth = target, estimate = .pred)
+
+```
+
+The `r-squared` of the model in the testing set was 0.674 which is slightly better than its value in the resamples (0.662). The `rmse` in the testing set was 0.024 which was also slight better than its value in the resamples (0.025). Because both metrics are similar in the resampling and testing phase, it was reasonable to conclude that the model was built properly.
+
+## Other Questions
+
+### Most Relevant Factor for Prediction
+
+Given that determining what is the main factor affecting the likes-to-views ratio is an inferential question, it was difficult to provide an accurate answer. However, by looking at the model coefficients, it was possible to obtain an approximation.
+
+Ideally, one should look at the coefficients provided by the model of best fit. However, since such model was a random forest, this was not possible. Instead, the linear model with interaction and tuned splines was used since it was the one the performed the best after the random forests. Its coefficients are shown below:
+
+```{r, comment=NA}
+#check coefficients 
+n <- tidy(final_lm_splines)
+n
+```
+
+The estimate is the coefficient assigned to a specific factor. Therefore, the estimate with the greatest magnitude represents the factors that carry more weight when the target was predicted. It is important to highlight that the weight could be either negative or positive (e.g. a coefficient -2 would be more relevant than a coefficient of 1). Thus, the absolute value of the estimates was calculated and ordered, the result is shown below:
+
+```{r, comment=NA}
+#data wrangling to find the factor with the greatest 
+#absolute estimate 
+n %>%
+  mutate(estimate = abs(estimate)) %>%
+  filter(!is.na(estimate)) %>% 
+  arrange(desc(estimate))
+
+```
+
+The `comment_disabled_TRUE.` was the factor with the most influence in the regression. The table below shows the `comment_count` in the original regression(no absolute values):
+
+```{r, comment=NA}
+n %>%
+  filter(term == "comments_disabled_TRUE.")
+```
+
+Since the value was negative, it means that the `comment_disabled_TRUE.` was the factor with the largest effect in the prediction and that videos that have disabled comments are more likely to have a lower target ratio. Again, it was not possible to determine if, in effect, `comment_disabled_TRUE.` is the most important factor, but using the regression coefficients it was fair to say that - at the bare minimum - `comment_disabled_TRUE.` is a good candidate and it would be worth to look more closely at it.
+
+**Note:** `comment_count` is correlated with `view_count` (0.54 across all data). Given that `target` is calculated from `view_count` it is logical that `comment_count` (and, therefore, `comment_disabled_TRUE.`) would be the main driving factor.
+
+### Category to Optimize Target Ratio
+
+Similarly to before, to gain an insight into which might be the best/worse categories to optimize target ratio, the coefficients of the linear regression was inspected. However, given that the goal is to maximize target, the sign of the coefficient was taken into account.
+
+The top 3 results are show below:
+
+```{r, comment=NA}
+n %>%
+  filter(stringr::str_starts(term, "category")) %>%
+  filter(stringr::str_length(term) < 15) %>%
+  arrange(desc(estimate)) %>%
+  head(3)
+
+```
+
+The last 3 results are show below:
+
+```{r, comment = NA}
+n %>%
+  filter(stringr::str_starts(term, "category")) %>%
+  filter(stringr::str_length(term) < 15) %>%
+  arrange(desc(estimate)) %>%
+  tail(3)
+
+```
+
+The results above hint at the fact that producing video in the categories 23 (comedy), 10 (music), and 22 (people and blogs) are likely to improve the target ratio. On the other hand, producing videos in the categories 24 (entertainment), 25 (news and politics), and 17 (sports) are likely to produce the opposite effect.
+
+## Conclusions
+
+It was possible to predict the target ratio (number of likes over view count) at a moderate level by developing a random forest model that accurately predicted \~67% of observations with a Root Mean Squared Error (rmse) of 0.024. A highly noticeable weakness of the model occurs at higher target values where the model tends to under-predict.
+
+Additionally, the regression model with interaction and tuned splines provided insights into the fact that the `comment_disabled_TRUE.` might be one (if not "the") main factors driving target ratio. Similarly, the model's coefficients unveiled that if someone aims to maximize the target ratio of their videos, they should probably produce music, comedy, or personal blog videos. Nonetheless, neither of the previous statements can be assured, but they provide a good starting point for further study.
+
+The EDA showed that highly successful videos should expect up to 0.4 for target ratio. It also showed that the sooner a video becomes trending, the higher its target ratio tends to be. On release day of the week, Fridays generally performed the best (likely because people have more time to watch the video over the weekend), and Sundays performed the worst (probably due to the opposite reason).
+
+To further improve the model, it is recommended to look at variables that were excluded from the predicting phase with an emphasis on: `tags` and `channelId` since one might find that the presence of a specific tag tends to increase/decrease target and that videos from specific channels tend to perform better.

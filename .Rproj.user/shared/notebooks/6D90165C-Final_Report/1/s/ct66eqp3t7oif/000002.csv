@@ -1,0 +1,6 @@
+"0","#data wrangling to find the factor with the greatest "
+"0","#absolute estimate "
+"0","l %>%"
+"0","  mutate(estimate = abs(estimate)) %>%"
+"0","  filter(!is.na(estimate)) %>% "
+"0","  arrange(desc(estimate))"

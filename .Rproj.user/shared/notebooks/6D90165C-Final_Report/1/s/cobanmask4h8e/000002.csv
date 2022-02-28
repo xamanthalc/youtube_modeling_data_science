@@ -1,0 +1,7 @@
+"0","#actual vs predicted values"
+"0","truth_against_pred <- youtube_test %>%"
+"0","  select(target) %>%"
+"0","  bind_cols(predict(final_fit, youtube_test))"
+"0",""
+"0","#table"
+"0","truth_against_pred"

@@ -1,0 +1,90 @@
+---
+title: "Predicting the Number of Likes to Views Ratio of a YouTube Video"
+subtitle: "Executive Summary"
+author: "Xamantha Laos Cueva"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    highlight: "tango"
+---
+
+<!-- Set global options for R code chunks -->
+
+```{r global-settings, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, message = FALSE, echo = FALSE
+)
+library(readr)
+library(ggfortify)
+library(arrow)
+library(skimr)
+library(tidymodels)
+library(lubridate)
+library(patchwork)
+library(stringr)
+load("data/all_models.rda")
+load("data/rf_customized_models.rda")
+load("data/fit_lm_interaction.rda")
+set.seed(123)
+
+```
+
+## Introduction
+
+The study was performed on a data set from Kaggle that compiled metrics of over 90,000 YouTube videos. The purpose of the study was to determine whether it was possible to build a model to predict the target (likes to views ratio) of a YouTube video. Furthermore, the study aimed to provide insights into questions such as:
+
+-   What is the main factor influencing target ratio?
+
+-   What categories of videos tend to perform the best?
+
+-   What categories of videos tend to perform the worst?
+
+**Source:** For this study, the data set with 92,275 observations and 20 variables from a Kaggle competition called "[Predict Youtube Video Likes](https://www.kaggle.com/c/kaggle-pog-series-s01e01/data)" was used.
+
+## Model-building process
+
+The study allocated 40% of the data for Exploratory Data Analysis and used the other 60% for the predictive-modeling phase. Out of that data, 80% was allocated for training data set and the rest was used as a testing data set. Different types of models were created: Linear, lasso, ridge, and random forest models For each type of model, two variations were created: those that included interaction terms and those that did not. In the case of the random forest models, the variations were based on the number of trees.
+
+The models were fitted into resamples to minimize the bias of the data by decreasing the chances of an scenario where the model memorizes the training set. The following metrics were obtained:
+
+**R-squared:**
+
+```{r, comment=NA}
+#metrics of models 
+collect_metrics(all_models) %>% filter(.metric == "rsq")
+
+```
+
+**Root Mean Squared Error:**
+
+```{r, comment=NA}
+#metrics of models 
+collect_metrics(all_models) %>% filter(.metric == "rmse")
+```
+
+The results above show that the customized random forest model performed the best with a mean r-squared of 0.662 and a mean rmse of 0.0246. Thus, it was chosen as the model to be fitted in the testing set. The result of such operation is reflected in the visualization below which shows the predicted vs. the actual values in the testing set.
+
+![](images/Screen%20Shot%202022-02-19%20at%2011.19.55%20PM.png){width="572"}
+
+Moreover, the metrics of the fitted model in the testing set were: r-squared = 0.674 and rmse = 0.0240, which is very close to the mean values obtained across folds. This is an indicator that the model was built correctly.
+
+## Key-insights
+
+Some of the main takeaways and conclusions were:
+
+-   It was possible to build a model that could moderately predict the target of a YouTube video.
+
+-   The model tends to under-predict at higher target values.
+
+-   The coefficients of the linear model with interaction show that the impact of disabling comments should be further studied as one of the factors that drive target given that it has the biggest coefficient.
+
+    -   However, its correlation with view count might be introducing bias given that target derives from the number of views.
+
+-   When isolating the effect of categories of videos in the regression, comedy and music videos perform the best in terms of target while sport and news/politics videos perform the worst.
+
+-   The EDA shows that Fridays tend to be the days of release with the best target, while Sundays tend to be worst.
+
+## Recommendations
+
+To improve the model, it is recommended to take into account variables such as **video** tags and **titles** since the presence/absence of certain words may affect the target. Additionally, collecting new metrics such as the **season** of the year when the videos were released or the **number of subscribers of the channel** that released the video would introduce new factors that could potentially improve model. Finally, an extension of this study could consider creating specific models for individual target ratios in response to the study's weakness when predicting videos with higher targets.

@@ -1,0 +1,73 @@
+---
+title: "Data Memo and Approval"
+author: "Xamantha Laos Cueva"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    highlight: "tango"
+---
+
+<!-- Set global options for R code chunks -->
+
+```{r global-settings, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, message = FALSE
+)
+library(readr)
+library(arrow)
+library(skimr)
+
+```
+
+## ABOUT THE DATA
+
+**Source:** I have obtained the Data from Kaggle from a competition called "[Predict Youtube Video Likes](https://www.kaggle.com/c/kaggle-pog-series-s01e01/data)." The data has been compiled by Kaggle, which provides a strong trust on its validity, and it is a compilation of metrics of over 90,000 Youtube Videos.
+
+**General Facts:** As shown below, the data has 92,275 rows and 20 variables.
+
+```{r}
+#data
+data <- read_parquet("train.parquet")
+
+#number of rows and columns
+nrow(data)
+ncol(data)
+```
+
+**Considerations:**
+
+1.  Kaggle provides both a training and a test set for the purpose of the competition. However, I will only make use of the training set (this will be split into a sub-training and test sets) to assess my models.
+
+2.  The number of observations is very large. So far, it does not seem to cause problems when generating simple operations so I am planning to use all the observations. However, if advice by the instructor, I will take a sample of about 20,000 observations for my final project.
+
+**Motivation:** I have picked this data set for the following reasons:
+
+1.  I worked as a social manager for an Ed-Tech company for one year and part of my work was creating content. I was always wondering what were the aspects of social media that drive engagement, so I am very interesting on this data set and the fact that it would allow me to make models that attempt to solve the question.
+
+2.  Unlike many other data sets, the one I have chosen is very clean and has several numeric metrics, which makes it a good candidate to use for modeling.
+
+## TIMELINE
+
+-   Data set loaded: As show before, the data set is already loaded.
+
+-   Analysis: I am planning to start with my analysis (specifically my EDA) next week.
+
+-   Model Building: I am planning to start building the models once my EDA is finished, which should take a maximum of one week.
+
+## POTENTIAL RESEARCH QUESTIONS
+
+Some of the potential research questions are:
+
+-   What is the feature of a video that affects the most the number of likes the video get? (inferential)
+
+-   Given that a video has [insert features here], how many likes should it expect? (predictive)
+
+My questions will most likely be answered with a regression-based approach.
+
+## APPENDIX
+
+```{r}
+skim_without_charts(data)
+
+```
